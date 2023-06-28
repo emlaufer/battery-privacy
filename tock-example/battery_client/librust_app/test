@@ -1,0 +1,25 @@
+cargo rustc --target thumbv7em-none-eabi -- --emit=obj -C relocation-model=pic
+   Compiling rand_core v0.6.4
+   Compiling subtle v2.5.0
+   Compiling byteorder v1.4.3
+   Compiling ff v0.13.0
+   Compiling rust_app v0.1.0 (/home/evan/Research/battery-virtualization/libtock-c/examples/battery_client/librust_app)
+warning: unused import: `marker::PhantomData`
+  --> src/field.rs:16:5
+   |
+16 |     marker::PhantomData,
+   |     ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: function `log2` is never used
+   --> src/fp.rs:384:15
+    |
+384 | pub(crate) fn log2(x: u128) -> u128 {
+    |               ^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: `rust_app` (lib) generated 2 warnings
+    Finished dev [unoptimized + debuginfo] target(s) in 0.36s
+cp target/thumbv7em-none-eabi/debug/librust_app.a ../librust_app.a

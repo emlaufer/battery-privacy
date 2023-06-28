@@ -1,0 +1,4 @@
+x,size,from
+1,64,input_share,
+1,256,proof_share,
+1,32,joint_randomness
