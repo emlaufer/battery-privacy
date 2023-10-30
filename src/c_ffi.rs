@@ -258,5 +258,4 @@ pub extern "C" fn collect(
     let agg_share: BatteryAggregateShare = input_bytes.try_into().unwrap();
     agg.2.add(agg_share);
     let aggregate = agg.2.aggregate();
-    println!("GOT: {:?}", aggregate);
 }
