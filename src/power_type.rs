@@ -1,11 +1,12 @@
-use crate::gadgets::{poly_range_check, RootHash, Sub}; //, BitSplit};
-                                                       //1 + 2 * self.len
-                                                       //2 * self.len + self.bits
+use crate::gadgets::poly_range_check; //, BitSplit};
+use crate::NUM_BITS;
+//1 + 2 * self.len
+//2 * self.len + self.bits
 use prio::field::{FieldElement, FieldError};
 use prio::flp::gadgets::{Mul, ParallelSumGadget};
 use prio::flp::{
     gadgets::{BlindPolyEval, PolyEval},
-    FlpError, Gadget, Type,
+    FlpError, Gadget, LazyEncode, Type, VecLike,
 };
 use prio::vdaf::prg::Prg;
 use prio::vdaf::prio3::Prio3;
@@ -117,7 +118,7 @@ impl<F: FieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>>> RAMPower<F, S> 
     }
 
     pub fn gadget_calls(&self) -> usize {
-        let chunk_len = self.chunk_len();
+        let chunk_len = self.chunk_len;
 
         let mut gadget_calls = (self.len + self.client_maxs[self.client_num]) / chunk_len;
         if self.len % chunk_len != 0 {
@@ -169,7 +170,7 @@ impl<F: FieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>>> RAMPower<F, S> 
         let mut r = joint_rand[0];
 
         let mut padded_chunk = vec![F::zero(); 2 * self.chunk_len];
-        for chunk in sorted_increments.chunks(self.chunk_len) {
+        for (i, chunk) in sorted_increments.chunks(self.chunk_len).enumerate() {
             let d = chunk.len();
             for i in 0..self.chunk_len {
                 if i < d {
@@ -194,6 +195,7 @@ impl<F: FieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>> + Eq + 'static +
 {
     const ID: u32 = 0x00000002;
     type Measurement = (F::Integer, Vec<F::Integer>);
+    type LazyMeasurement = Vec<F>;
     type AggregateResult = Vec<F::Integer>;
     type Field = F;
 
@@ -201,7 +203,7 @@ impl<F: FieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>> + Eq + 'static +
         &self,
         measurement: &(F::Integer, Vec<F::Integer>),
     ) -> Result<Vec<F>, FlpError> {
-        let current_energy = measurement.0;
+        let mut current_energy = measurement.0;
         let mut measurements = measurement.1.clone();
         if measurements.len() != self.len {
             return Err(FlpError::Encode(format!(
@@ -258,7 +260,7 @@ impl<F: FieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>> + Eq + 'static +
             )),
             //Box::new(Mul::new(2 * self.len)),
             Box::new(S::new(
-                BlindPolyEval::new(self.range_checker.clone(), self.gadget_calls() + 1),
+                BlindPolyEval::new(self.range_checker.clone(), 2 * self.gadget_calls),
                 self.chunk_len,
             )),
             //Box::new(RootHash::new(self.len, 1)),
@@ -342,6 +344,19 @@ impl<F: FieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>> + Eq + 'static +
             + energy_max_check);
     }
 
+    fn get_wire_values(
+        &self,
+        gadgets: &Vec<Box<dyn Gadget<Self::Field>>>,
+        outp: &mut [Self::Field],
+        input: &Self::LazyMeasurement,
+        joint_rand: &[Self::Field],
+        num_shares: usize,
+        gadget_idx: usize,
+        wire_idx: usize,
+    ) -> Result<(), FlpError> {
+        unimplemented!();
+    }
+
     fn truncate(&self, input: Vec<F>) -> Result<Vec<F>, FlpError> {
         self.truncate_call_check(&input)?;
         Ok(input[0..self.len].to_vec())
@@ -382,8 +397,8 @@ impl<F: FieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>> + Eq + 'static +
             .next_power_of_two()
             + 1
             + 2 * self.chunk_len
-            + 3 * ((1 + self.gadget_calls()).next_power_of_two() - 1)
-            + 1
+            + 6 * ((1 + self.gadget_calls()).next_power_of_two() - 1)
+            + 4
         //8 * (self.len + 2usize.pow(self.bits as u32))
         //self.len * (self.len + 1) + 2 * 2usize.pow(self.bits as u32)
         //+ 2 * self.chunk_len
@@ -447,10 +462,10 @@ impl<F: FieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>>> LinearPower<F, 
         client_maxs: Vec<usize>,
         client_energies: Vec<usize>,
     ) -> Result<Self, FlpError> {
-        let chunk_len = std::cmp::max(1, ((len * 4 * 16) as f64).sqrt() as usize);
+        let chunk_len = std::cmp::max(1, ((len * 3 * NUM_BITS) as f64).sqrt() as usize);
 
-        let mut gadget_calls = (len * 4 * 16) / chunk_len;
-        if len % chunk_len != 0 {
+        let mut gadget_calls = (len * 3 * NUM_BITS) / chunk_len;
+        if (len * 3 * NUM_BITS) % chunk_len != 0 {
             gadget_calls += 1;
         }
 
@@ -466,6 +481,62 @@ impl<F: FieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>>> LinearPower<F, 
             client_energies,
         })
     }
+
+    pub fn encode_index(
+        data: &(F::Integer, Vec<F::Integer>, F::Integer, F::Integer),
+        o_idx: usize,
+    ) -> F {
+        let current_energy = data.0;
+        let measurements = &data.1;
+        let max_power = data.2;
+        let max_energy = data.3;
+        let mut idx = o_idx;
+
+        if idx == 0 {
+            // TODO: technically no need for this...
+            return F::from(current_energy);
+        }
+        idx -= 1;
+
+        if idx < measurements.len() {
+            return F::from(measurements[idx]);
+        }
+        idx -= measurements.len();
+
+        // if data.len() < idx < data.len() + measure_len * num_bits, get correct bit...
+        if idx < measurements.len() * NUM_BITS {
+            let measurement = idx / NUM_BITS;
+            let bit = F::Integer::try_from(idx % NUM_BITS).unwrap();
+
+            return F::from((measurements[measurement] >> bit) & F::Integer::try_from(1).unwrap());
+        }
+        idx -= measurements.len() * NUM_BITS;
+
+        if idx < measurements.len() * NUM_BITS {
+            let measurement = idx / NUM_BITS;
+            let bit = F::Integer::try_from(idx % NUM_BITS).unwrap();
+
+            return F::from(
+                ((max_power - measurements[measurement]) >> bit) & F::Integer::try_from(1).unwrap(),
+            );
+        }
+        idx -= measurements.len() * NUM_BITS;
+
+        if idx < measurements.len() * NUM_BITS {
+            let measurement = idx / NUM_BITS;
+            let current_energy = current_energy
+                - measurements[0..measurement]
+                    .iter()
+                    .fold(F::Integer::try_from(0).unwrap(), |a, v| a + *v);
+            let bit = F::Integer::try_from(idx % NUM_BITS).unwrap();
+
+            return F::from(
+                ((max_energy - (current_energy)) >> bit) & F::Integer::try_from(1).unwrap(),
+            );
+            //    current_energy = current_energy - measurements[i];
+        }
+        panic!("Index {} out of bounds!", o_idx);
+    }
 }
 
 impl<F: FieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>> + Eq + 'static + Clone> Type
@@ -473,80 +544,81 @@ impl<F: FieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>> + Eq + 'static +
 {
     const ID: u32 = 0x00000001;
     type Measurement = (F::Integer, Vec<F::Integer>);
+    type LazyMeasurement = LazyEncode<(F::Integer, Vec<F::Integer>, F::Integer, F::Integer), F>;
     type AggregateResult = Vec<F::Integer>;
     type Field = F;
 
     fn encode_measurement(
         &self,
         measurement: &(F::Integer, Vec<F::Integer>),
-    ) -> Result<Vec<F>, FlpError> {
-        let current_energy = measurement.0;
-        let measurements = &measurement.1;
-        if measurements.len() != self.len {
-            return Err(FlpError::Encode(format!(
-                "unexpected measurement length: got {}; want {}",
-                measurements.len(),
-                self.len
-            )));
-        }
-
+    ) -> Result<Self::LazyMeasurement, FlpError> {
+        let (current_energy, measurements) = measurement.clone();
         let max_power = F::Integer::try_from(self.client_maxs[self.client_num]).unwrap();
         let max_energy = F::Integer::try_from(self.client_energies[self.client_num]).unwrap();
-        let mut res = vec![F::from(current_energy)];
-        println!("CURRENT ENERGY: {:?}", F::from(current_energy));
-        res.extend(measurements.iter().map(|value| F::from(*value)));
-        res.extend(
-            measurements
-                .iter()
-                .map(|value| {
-                    // TODO: Add a compile option to support invalid attempts
-                    encode_into_bitvector_representation::<F>(&(*value), self.bits as usize).expect(
-                        &format!(
-                            "Cannot encode ({:?} - {:?}) within {} bits! Invalid!",
-                            max_power, value, self.bits
-                        ),
-                    )
-                })
-                .flatten(),
-        );
-        res.extend(
-            measurements
-                .iter()
-                .map(|value| {
-                    // TODO: Add a compile option to support invalid attempts
-                    encode_into_bitvector_representation::<F>(
-                        &(max_power - *value),
-                        self.bits as usize,
-                    )
-                    .expect(&format!(
-                        "Cannot encode ({:?} - {:?}) within {} bits! Invalid!",
-                        max_power, value, self.bits
-                    ))
-                })
-                .flatten(),
-        );
-        res.extend(
-            (0..measurements.len())
-                .map(|i| {
-                    measurements[0..i]
-                        .iter()
-                        .cloned()
-                        .fold(F::Integer::try_from(0).unwrap(), |a, m| a + m)
-                })
-                .map(|value: F::Integer| {
-                    // TODO: Add a compile option to support invalid attempts
-                    encode_into_bitvector_representation::<F>(
-                        &(max_energy - (current_energy - value)),
-                        self.bits as usize,
-                    )
-                    .expect(&format!(
-                        "Cannot encode ({:?} - ({:?} - {:?})) within {} bits! Invalid!",
-                        max_energy, current_energy, value, self.bits
-                    ))
-                })
-                .flatten(),
-        );
-        Ok(res)
+        Ok(LazyEncode {
+            data: (current_energy, measurements, max_power, max_energy),
+            len: self.len * (3 * self.bits + 1) + 1,
+            indexer: Self::encode_index,
+        })
+        // BELOW: Eager version...
+        //let mut current_energy = measurement.0;
+        //let measurements = &measurement.1;
+        //if measurements.len() != self.len {
+        //    return Err(FlpError::Encode(format!(
+        //        "unexpected measurement length: got {}; want {}",
+        //        measurements.len(),
+        //        self.len
+        //    )));
+        //}
+
+        //let max_power = F::Integer::try_from(self.client_maxs[self.client_num]).unwrap();
+        //let max_energy = F::Integer::try_from(self.client_energies[self.client_num]).unwrap();
+        //let mut res: Vec<F> = Vec::with_capacity(1 + (1 + 3 * self.bits) * measurements.len());
+        //println!("EXPECT: {}", 1 + (1 + 3 * self.bits) * measurements.len());
+        //res.push(F::from(current_energy));
+        //println!("CURRENT ENERGY: {:?}", F::from(current_energy));
+        //// TODO: get rid of this...
+        //for i in 0..measurements.len() {
+        //    res.push(F::from(measurements[i]));
+        //}
+        //for i in 0..measurements.len() {
+        //    res.extend(
+        //        encode_into_bitvector_representation::<F>(&measurements[i], self.bits as usize)
+        //            .expect(&format!(
+        //                "Cannot encode ({:?} - {:?}) within {} bits! Invalid!",
+        //                max_power, measurements[i], self.bits
+        //            )),
+        //    );
+        //}
+        //for i in 0..measurements.len() {
+        //    res.extend(
+        //        encode_into_bitvector_representation::<F>(
+        //            &(max_power - measurements[i]),
+        //            self.bits as usize,
+        //        )
+        //        .expect(&format!(
+        //            "Cannot encode ({:?} - {:?}) within {} bits! Invalid!",
+        //            max_power, measurements[i], self.bits
+        //        )),
+        //    );
+        //}
+        //for i in 0..measurements.len() {
+        //    res.extend(
+        //        encode_into_bitvector_representation::<F>(
+        //            &(max_energy - (current_energy - measurements[i])),
+        //            self.bits as usize,
+        //        )
+        //        .expect(&format!(
+        //            "Cannot encode ({:?} - {:?}) within {} bits! Invalid!",
+        //            max_power, measurements[i], self.bits
+        //        )),
+        //    );
+        //    current_energy = current_energy - measurements[i];
+        //}
+        //println!("TOTAL VALUES: {:?}", res.len());
+        //println!("bytes CAP: {:?}", res.capacity() * std::mem::size_of::<F>());
+        //println!("got: {:?}", std::mem::size_of::<F>());
+        //Ok(res)
     }
 
     fn decode_result(
@@ -654,8 +726,10 @@ impl<F: FieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>> + Eq + 'static +
         }
 
         // check that each bit is 0 or 1 using parallel sum gadget
+        let mut r = joint_rand[0];
         let mut outp = F::zero();
         let mut padded_chunk = vec![F::zero(); 2 * self.chunk_len];
+        let mut test = 0;
         for chunk in bits.chunks(self.chunk_len) {
             let d = chunk.len();
             for i in 0..self.chunk_len {
@@ -670,10 +744,71 @@ impl<F: FieldElement, S: ParallelSumGadget<F, BlindPolyEval<F>> + Eq + 'static +
                 r *= joint_rand[0];
             }
 
+            test += 1;
             outp += g[0].call(&padded_chunk)?;
         }
 
         Ok(res + outp)
+    }
+
+    fn get_wire_values(
+        &self,
+        gadgets: &Vec<Box<dyn Gadget<Self::Field>>>,
+        outp: &mut [Self::Field],
+        inp: &Self::LazyMeasurement,
+        joint_rand: &[Self::Field],
+        num_shares: usize,
+        gadget_idx: usize,
+        wire_idx: usize,
+    ) -> Result<(), FlpError> {
+        // TODO: Fix this!
+        let bits_off = self.len + 1;
+        let num_bits = self.len * (3 * self.bits); //inp.len() - (self.len + 1);
+
+        let mut r = joint_rand[0];
+        // check that each bit is 0 or 1 using parallel sum gadget
+        //let mut outp = F::zero();
+        //let mut padded_chunk = vec![F::zero(); 2 * self.chunk_len];
+        let s = F::from(F::Integer::try_from(num_shares).unwrap()).inv();
+        for idx in 0..outp.len() {
+            for i in 0..wire_idx / 2 {
+                r *= joint_rand[0];
+            }
+            // get the wire values for each chunk
+            if wire_idx % 2 == 0 {
+                let inp_idx = bits_off + (idx * self.chunk_len) + wire_idx / 2;
+                if inp_idx < inp.len() {
+                    outp[idx] = inp.index(bits_off + (idx * self.chunk_len) + wire_idx / 2);
+                } else {
+                    outp[idx] = inp.index(inp.len() - 1);
+                }
+            } else {
+                outp[idx] = r * s
+            }
+            for i in wire_idx / 2..self.chunk_len {
+                r *= joint_rand[0];
+            }
+        }
+
+        Ok(())
+        //padded_chunk[
+        //for chunk in bits.chunks(self.chunk_len) {
+        //    let d = chunk.len();
+        //    for i in 0..self.chunk_len {
+        //        if i < d {
+        //            padded_chunk[2 * i] = chunk[i];
+        //        } else {
+        //            // If the chunk is smaller than the chunk length, then copy the last element of
+        //            // the chunk into the remaining slots.
+        //            padded_chunk[2 * i] = chunk[d - 1];
+        //        }
+        //        padded_chunk[2 * i + 1] = r * s;
+        //        r *= joint_rand[0];
+        //    }
+
+        //    println!("chunk: {:?}", chunk);
+        //    outp += g[0].call(&padded_chunk)?;
+        //}
     }
 
     fn truncate(&self, input: Vec<F>) -> Result<Vec<F>, FlpError> {

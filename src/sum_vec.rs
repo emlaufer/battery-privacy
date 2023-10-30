@@ -38,86 +38,86 @@ pub(crate) fn poly_range_check<F: FieldElement>(start: usize, end: usize) -> Vec
     p
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub struct SumVec<F: FieldElement> {
-    bits: usize,
-    range_checker: Vec<F>,
-}
-
-impl<F: FieldElement> SumVec<F> {
-    pub fn new(bits: usize) -> Result<Self, FlpError> {
-        //if !F::valid_integer_bitlength(bits) {
-        //    return Err(FlpError::Encode(
-        //        "invalid bits: number of bits exceeds maximum number of bits in this field"
-        //            .to_string(),
-        //    ));
-        //}
-        Ok(Self {
-            bits,
-            range_checker: poly_range_check(0, 2),
-        })
-    }
-}
-
-use prio::flp::{Gadget, Type};
-impl<F: FieldElement> Type for SumVec<F> {
-    const ID: u32 = 0xbbbb;
-    type Measurement = F::Integer;
-    type AggregateResult = F::Integer;
-    type Field = F;
-
-    fn encode_measurement(&self, value: &F::Integer) -> Result<Vec<F>, FlpError> {
-        unimplemented!();
-    }
-
-    fn decode_result(&self, data: &[F], num_measurements: usize) -> Result<F::Integer, FlpError> {
-        unimplemented!();
-    }
-
-    fn gadget(&self) -> Vec<Box<dyn Gadget<F>>> {
-        unimplemented!();
-    }
-
-    fn valid(
-        &self,
-        g: &mut Vec<Box<dyn Gadget<F>>>,
-        input: &[F],
-        joint_rand: &[F],
-        num_shares: usize,
-    ) -> Result<F, FlpError> {
-        unimplemented!();
-    }
-
-    fn truncate(&self, input: Vec<F>) -> Result<Vec<F>, FlpError> {
-        unimplemented!();
-    }
-
-    fn input_len(&self) -> usize {
-        unimplemented!()
-    }
-
-    fn proof_len(&self) -> usize {
-        unimplemented!()
-    }
-
-    fn verifier_len(&self) -> usize {
-        unimplemented!()
-    }
-
-    fn output_len(&self) -> usize {
-        unimplemented!()
-    }
-
-    fn joint_rand_len(&self) -> usize {
-        unimplemented!()
-    }
-
-    fn prove_rand_len(&self) -> usize {
-        unimplemented!()
-    }
-
-    fn query_rand_len(&self) -> usize {
-        unimplemented!()
-    }
-}
-
+//#[derive(PartialEq, Eq, Clone, Debug)]
+//pub struct SumVec<F: FieldElement> {
+//    bits: usize,
+//    range_checker: Vec<F>,
+//}
+//
+//impl<F: FieldElement> SumVec<F> {
+//    pub fn new(bits: usize) -> Result<Self, FlpError> {
+//        //if !F::valid_integer_bitlength(bits) {
+//        //    return Err(FlpError::Encode(
+//        //        "invalid bits: number of bits exceeds maximum number of bits in this field"
+//        //            .to_string(),
+//        //    ));
+//        //}
+//        Ok(Self {
+//            bits,
+//            range_checker: poly_range_check(0, 2),
+//        })
+//    }
+//}
+//
+//use prio::flp::{Gadget, Type};
+//impl<F: FieldElement> Type for SumVec<F> {
+//    const ID: u32 = 0xbbbb;
+//    type Measurement = F::Integer;
+//    type AggregateResult = F::Integer;
+//    type Field = F;
+//
+//    fn encode_measurement(&self, value: &F::Integer) -> Result<Vec<F>, FlpError> {
+//        unimplemented!();
+//    }
+//
+//    fn decode_result(&self, data: &[F], num_measurements: usize) -> Result<F::Integer, FlpError> {
+//        unimplemented!();
+//    }
+//
+//    fn gadget(&self) -> Vec<Box<dyn Gadget<F>>> {
+//        unimplemented!();
+//    }
+//
+//    fn valid(
+//        &self,
+//        g: &mut Vec<Box<dyn Gadget<F>>>,
+//        input: &[F],
+//        joint_rand: &[F],
+//        num_shares: usize,
+//    ) -> Result<F, FlpError> {
+//        unimplemented!();
+//    }
+//
+//    fn truncate(&self, input: Vec<F>) -> Result<Vec<F>, FlpError> {
+//        unimplemented!();
+//    }
+//
+//    fn input_len(&self) -> usize {
+//        unimplemented!()
+//    }
+//
+//    fn proof_len(&self) -> usize {
+//        unimplemented!()
+//    }
+//
+//    fn verifier_len(&self) -> usize {
+//        unimplemented!()
+//    }
+//
+//    fn output_len(&self) -> usize {
+//        unimplemented!()
+//    }
+//
+//    fn joint_rand_len(&self) -> usize {
+//        unimplemented!()
+//    }
+//
+//    fn prove_rand_len(&self) -> usize {
+//        unimplemented!()
+//    }
+//
+//    fn query_rand_len(&self) -> usize {
+//        unimplemented!()
+//    }
+//}
+//

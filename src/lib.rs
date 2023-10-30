@@ -1,8 +1,6 @@
-use prio::field::{Field128, Field32, Field64};
+use prio::field::Field32;
 use prio::flp::gadgets::{BlindPolyEval, ParallelSum};
-use prio::vdaf::prio3::{
-    Prio3Aes128Sum, Prio3PrepareMessage, Prio3PrepareShare, Prio3PrepareState,
-};
+use prio::vdaf::prio3::{Prio3PrepareMessage, Prio3PrepareShare, Prio3PrepareState};
 use prio::vdaf::{
     prg::PrgAes128,
     prio3::{Prio3, Prio3InputShare},
@@ -11,6 +9,7 @@ use prio::vdaf::{
 use rand::prelude::*;
 
 pub mod beaver;
+mod c_ffi;
 mod client;
 mod gadgets;
 mod power_type;
@@ -20,7 +19,7 @@ mod sum_vec;
 use power_type::{LinearPower, RAMPower};
 
 static NUM_SHARES: usize = 2;
-static NUM_BITS: usize = 16;
+static NUM_BITS: usize = 10;
 
 type BatteryField = Field32;
 pub type BatteryValue = u32;
@@ -77,6 +76,19 @@ impl BatteryClient {
     /// Generates data shares for each aggregator
     ///
     /// Returns a list of shares, one for each aggregator
+    pub fn generate_shares_callback(&self, values: Vec<BatteryValue>, callback: &dyn Fn(&[u8])) {
+        // vector of vectors, each containing shares for each aggregator
+        let mut aggr_input_shares: Vec<BatteryInputShare> = Vec::new();
+
+        //for value in &self.values {
+        self.vdaf
+            .shard_callback(&(self.current_energy.into(), values), callback)
+            .unwrap();
+    }
+
+    /// Generates data shares for each aggregator
+    ///
+    /// Returns a list of shares, one for each aggregator
     pub fn generate_shares(&self, values: Vec<BatteryValue>) -> Vec<BatteryInputShare> {
         // vector of vectors, each containing shares for each aggregator
         let mut aggr_input_shares: Vec<BatteryInputShare> = Vec::new();
@@ -94,12 +106,12 @@ impl BatteryClient {
 #[derive(Debug)]
 pub struct BatteryAggregator {
     // TODO: add state here so we can update
-    id: usize,
-    vdaf: BatteryVdaf,
+    pub id: usize,
+    pub vdaf: BatteryVdaf,
     verify_key: [u8; 16],
     pub aggregate_shares: Option<BatteryAggregateShare>,
     num_measurements: usize,
-    state: Option<BatteryPrepareState>,
+    pub state: Option<BatteryPrepareState>,
 }
 
 impl BatteryAggregator {
@@ -290,7 +302,7 @@ impl BatteryCollector {
         // manually unshard...
         use power_type::IndexCollector;
         let result = self.vdaf.unshard_index(&(), shares, 1).unwrap();
-        println!("GOT: {:?}", result);
+        //println!("GOT: {:?}", result);
         return 0;
     }
 }
@@ -329,6 +341,6 @@ mod tests {
         for agg in aggregators {
             collector.add(agg.aggregate_shares.unwrap());
         }
-        println!("Got: {:?}", collector.aggregate());
+        //println!("Got: {:?}", collector.aggregate());
     }
 }

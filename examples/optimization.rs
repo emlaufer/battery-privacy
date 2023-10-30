@@ -8,6 +8,8 @@ use rand::prelude::*;
 use std::env;
 use std::time::{Duration, Instant};
 
+const NUM_CHANGES: usize = 50;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let num_clients = str::parse(&args[1]).unwrap();
@@ -39,21 +41,21 @@ fn main() {
         let mut changes: Vec<usize> = rng
             .clone()
             .sample_iter(Standard)
-            .take(49)
-            .map(|v: usize| v % num_shares)
+            .take(NUM_CHANGES - 1)
+            .map(|v: usize| v % std::cmp::max((num_shares / 2), 1))
             .collect();
         changes.sort();
         let mut schedule = Vec::with_capacity(num_shares);
         let mut c = 0;
         for i in 0..num_shares {
-            if c < 49 && i >= changes[c] {
+            if c < NUM_CHANGES - 1 && i % 2 == 0 && i / 2 >= changes[c] {
                 schedule.push(1);
                 c += 1;
             } else {
                 schedule.push(0);
             }
         }
-        println!("SCHEDULE: {:?}", schedule);
+        //println!("SCHEDULE: {:?}", schedule);
         clients.push(schedule);
     }
 
